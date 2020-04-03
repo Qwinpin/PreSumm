@@ -104,19 +104,23 @@ class Translator(object):
 
         translations = []
         for b in range(batch_size):
-            pred_sents = self.vocab.convert_ids_to_tokens([int(n) for n in preds[b][0]])
-            pred_sents = ' '.join(pred_sents).replace(' ##','')
-            gold_sent = ' '.join(tgt_str[b].split())
-            # translation = Translation(fname[b],src[:, b] if src is not None else None,
-            #                           src_raw, pred_sents,
-            #                           attn[b], pred_score[b], gold_sent,
-            #                           gold_score[b])
-            # src = self.spm.DecodeIds([int(t) for t in translation_batch['batch'].src[0][5] if int(t) != len(self.spm)])
-            raw_src = [self.vocab.ids_to_tokens[int(t)] for t in src[b]][:500]
-            raw_src = ' '.join(raw_src)
-            translation = (pred_sents, gold_sent, raw_src)
-            # translation = (pred_sents[0], gold_sent)
-            translations.append(translation)
+            tmp = []
+            for beam, _ in enumerate(preds[b]):
+                pred_sents = self.vocab.convert_ids_to_tokens([int(n) for n in preds[b][beam]])
+                pred_sents = ' '.join(pred_sents).replace(' ##','')
+                gold_sent = ' '.join(tgt_str[b].split())
+                # translation = Translation(fname[b],src[:, b] if src is not None else None,
+                #                           src_raw, pred_sents,
+                #                           attn[b], pred_score[b], gold_sent,
+                #                           gold_score[b])
+                # src = self.spm.DecodeIds([int(t) for t in translation_batch['batch'].src[0][5] if int(t) != len(self.spm)])
+                raw_src = [self.vocab.ids_to_tokens[int(t)] for t in src[b]][:500]
+                raw_src = ' '.join(raw_src)
+                translation = (pred_sents, gold_sent, raw_src)
+                # translation = (pred_sents[0], gold_sent)
+                tmp.append(translation)
+
+            translations.append(tmp)
 
         return translations
 
@@ -151,33 +155,37 @@ class Translator(object):
                 batch_data = self.translate_batch(batch)
                 translations = self.from_batch(batch_data)
 
-                for trans in translations:
-                    pred, gold, src = trans
-                    pred_str = pred.replace('[unused0]', '').replace('[unused3]', '').replace('[PAD]', '').replace('[unused1]', '').replace(r' +', ' ').replace(' [unused2] ', '<q>').replace('[unused2]', '').strip()
-                    gold_str = gold.strip()
-                    if(self.args.recall_eval):
-                        # _pred_str = ''
-                        # for sent in pred_str.split('<q>'):
-                        #     can_pred_str = _pred_str+ '<q>'+sent.strip()
-                        #     can_gap = math.fabs(len(_pred_str.split())-len(gold_str.split()))
-                        #     # if(can_gap>=gap):
-                        #     if(len(can_pred_str.split())>=len(gold_str.split())+10):
-                        #         pred_str = _pred_str
-                        #         break
-                        #     else:
-                        #         _pred_str = can_pred_str
+                for _trans in translations:
+                    for jjj, trans in enumerate(_trans):
+                        pred, gold, src = trans
+                        pred_str = pred.replace('[unused1]', '').replace('[unused4]', '').replace('[PAD]', '').replace('[unused2]', '').replace(r' +', ' ').replace(' [unused3] ', '<q>').replace('[unused3]', '').strip()
+                        gold_str = gold.strip()
+                        if(self.args.recall_eval):
+                            _pred_str = ''
+                            gap = 1e3
+                            for sent in pred_str.split('<q>'):
+                                can_pred_str = _pred_str+ '<q>'+sent.strip()
+                                can_gap = math.fabs(len(_pred_str.split())-len(gold_str.split()))
+                                # if(can_gap>=gap):
+                                if(len(can_pred_str.split())>=len(gold_str.split())+10):
+                                    pred_str = _pred_str
+                                    break
+                                else:
+                                    gap = can_gap
+                                    _pred_str = can_pred_str
 
 
 
-                        pred_str = ' '.join(pred_str.split()[:len(gold_str.split())])
-
-                    self.can_out_file.write(pred_str + '\n')
-                    self.gold_out_file.write(gold_str + '\n')
-                    self.src_out_file.write(src.strip() + '\n')
+                            # pred_str = ' '.join(pred_str.split()[:len(gold_str.split())])
+                        # self.raw_can_out_file.write(' '.join(pred).strip() + '\n')
+                        # self.raw_gold_out_file.write(' '.join(gold).strip() + '\n')
+                        self.can_out_file.write(str(jjj) + ' ' + pred_str + '\n')
+                        self.gold_out_file.write(str(jjj) + ' ' + gold_str + '\n')
+                        self.src_out_file.write(str(jjj) + ' ' + src.strip() + '\n')
                     ct += 1
-                self.can_out_file.flush()
-                self.gold_out_file.flush()
-                self.src_out_file.flush()
+                    self.can_out_file.flush()
+                    self.gold_out_file.flush()
+                    self.src_out_file.flush()
 
         self.can_out_file.close()
         self.gold_out_file.close()
@@ -352,10 +360,13 @@ class Translator(object):
                     if end_condition[i]:
                         best_hyp = sorted(
                             hypotheses[b], key=lambda x: x[0], reverse=True)
-                        score, pred = best_hyp[0]
+                        print('WOP', len(best_hyp))
+                        for score, pred in best_hyp[:5]:
+                            # score, pred = best_hyp[0]
 
-                        results["scores"][b].append(score)
-                        results["predictions"][b].append(pred)
+                            results["scores"][b].append(score)
+                            results["predictions"][b].append(pred)
+
                 non_finished = end_condition.eq(0).nonzero().view(-1)
                 # If all sentences are translated, no need to go further.
                 if len(non_finished) == 0:

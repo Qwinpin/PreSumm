@@ -99,6 +99,7 @@ if __name__ == '__main__':
 
 
     parser.add_argument('-visible_gpus', default='-1', type=str)
+    parser.add_argument('-master_port', default='5555', type=str)
     parser.add_argument('-gpu_ranks', default='0', type=str)
     parser.add_argument('-log_file', default='../logs/cnndm.log')
     parser.add_argument('-seed', default=666, type=int)
@@ -115,6 +116,7 @@ if __name__ == '__main__':
     args.gpu_ranks = [int(i) for i in range(len(args.visible_gpus.split(',')))]
     args.world_size = len(args.gpu_ranks)
     os.environ["CUDA_VISIBLE_DEVICES"] = args.visible_gpus
+    os.environ["MASTER_PORT"] = args.master_port
 
     init_logger(args.log_file)
     device = "cpu" if args.visible_gpus == '-1' else "cuda"

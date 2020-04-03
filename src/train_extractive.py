@@ -26,7 +26,8 @@ model_flags = ['hidden_size', 'ff_size', 'heads', 'inter_layers', 'encoder', 'ff
 def train_multi_ext(args):
     """ Spawns 1 process per GPU """
     init_logger()
-
+    print('1123')
+    os.environ["MASTER_PORT"] = args.master_port
     nb_gpu = args.world_size
     mp = torch.multiprocessing.get_context('spawn')
 
@@ -49,10 +50,12 @@ def train_multi_ext(args):
 
 def run(args, device_id, error_queue):
     """ run process """
+    print(args.master_port)
+    os.environ["MASTER_PORT"] = args.master_port
     setattr(args, 'gpu_ranks', [int(i) for i in args.gpu_ranks])
 
     try:
-        gpu_rank = distributed.multi_init(device_id, args.world_size, args.gpu_ranks)
+        gpu_rank = distributed.multi_init(device_id, args.world_size, args.gpu_ranks, args.master_port)
         print('gpu_rank %d' % gpu_rank)
         if gpu_rank != args.gpu_ranks[device_id]:
             raise AssertionError("An error occurred in \
@@ -206,6 +209,7 @@ def train_ext(args, device_id):
 def train_single_ext(args, device_id):
     init_logger(args.log_file)
 
+    os.environ["MASTER_PORT"] = args.master_port
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
     logger.info('Device ID %d' % device_id)
     logger.info('Device %s' % device)

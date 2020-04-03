@@ -98,9 +98,9 @@ def load_xml(p):
             break
     if (len(paras) > 0):
         if (len(byline) > 0):
-            paras = [title + ['[unused3]'] + byline + ['[unused4]']] + paras
+            paras = [title + ['[unused4]'] + byline + ['[unused5]']] + paras
         else:
-            paras = [title + ['[unused3]']] + paras
+            paras = [title + ['[unused4]']] + paras
 
         return paras, abs
     else:
@@ -207,14 +207,14 @@ def hashhex(s):
 class BertData():
     def __init__(self, args):
         self.args = args
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-
+        self.tokenizer = BertTokenizer.from_pretrained('../models/rubert_cased_v2', do_lower_case=True)
+        print('Are u okay?')
         self.sep_token = '[SEP]'
         self.cls_token = '[CLS]'
         self.pad_token = '[PAD]'
-        self.tgt_bos = '[unused0]'
-        self.tgt_eos = '[unused1]'
-        self.tgt_sent_split = '[unused2]'
+        self.tgt_bos = '[unused1]'
+        self.tgt_eos = '[unused2]'
+        self.tgt_sent_split = '[unused3]'
         self.sep_vid = self.tokenizer.vocab[self.sep_token]
         self.cls_vid = self.tokenizer.vocab[self.cls_token]
         self.pad_vid = self.tokenizer.vocab[self.pad_token]
@@ -222,6 +222,7 @@ class BertData():
     def preprocess(self, src, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
 
         if ((not is_test) and len(src) == 0):
+            print('A')
             return None
 
         original_src_txt = [' '.join(s) for s in src]
@@ -258,17 +259,18 @@ class BertData():
         cls_ids = [i for i, t in enumerate(src_subtoken_idxs) if t == self.cls_vid]
         sent_labels = sent_labels[:len(cls_ids)]
 
-        tgt_subtokens_str = '[unused0] ' + ' [unused2] '.join(
-            [' '.join(self.tokenizer.tokenize(' '.join(tt), use_bert_basic_tokenizer=use_bert_basic_tokenizer)) for tt in tgt]) + ' [unused1]'
+        tgt_subtokens_str = '[unused1] ' + ' [unused3] '.join(
+            [' '.join(self.tokenizer.tokenize(' '.join(tt), use_bert_basic_tokenizer=use_bert_basic_tokenizer)) for tt in tgt]) + ' [unused2]'
         tgt_subtoken = tgt_subtokens_str.split()[:self.args.max_tgt_ntokens]
         if ((not is_test) and len(tgt_subtoken) < self.args.min_tgt_ntokens):
+            print('C')
             return None
 
         tgt_subtoken_idxs = self.tokenizer.convert_tokens_to_ids(tgt_subtoken)
 
         tgt_txt = '<q>'.join([' '.join(tt) for tt in tgt])
         src_txt = [original_src_txt[i] for i in idxs]
-
+        print('D')
         return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt
 
 
@@ -380,8 +382,93 @@ def _format_to_lines(params):
     source, tgt = load_json(f, args.lower)
     return {'src': source, 'tgt': tgt}
 
+def custom_format_to_lines(args):
+    corpus_mapping = {}
+    train_files = []
+    for f in glob.glob(pjoin(args.raw_path, '*.json')):
+        train_files.append(f)
 
+    corpora = {'train': train_files}
+    for corpus_type in ['train']:
+        a_lst = [(f, args) for f in corpora[corpus_type]]
+        pool = Pool(args.n_cpus)
+        dataset = []
+        p_ct = 0
+        for d in pool.imap_unordered(_format_to_lines, a_lst):
+            dataset.append(d)
+            if (len(dataset) > args.shard_size):
+                pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+                with open(pt_file, 'w') as save:
+                    # save.write('\n'.join(dataset))
+                    save.write(json.dumps(dataset))
+                    p_ct += 1
+                    dataset = []
 
+        pool.close()
+        pool.join()
+        if (len(dataset) > 0):
+            pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+            with open(pt_file, 'w') as save:
+                # save.write('\n'.join(dataset))
+                save.write(json.dumps(dataset))
+                p_ct += 1
+                dataset = []
+
+def custom_format_to_bert(args):
+        if (args.dataset != ''):
+            datasets = [args.dataset]
+            print('dataset')
+        else:
+            datasets = ['train']
+        for corpus_type in datasets:
+            a_lst = []
+            print('R', glob.glob(pjoin(args.raw_path, corpus_type + '.*.json')))
+            for json_f in glob.glob(pjoin(args.raw_path, corpus_type + '.*.json')):
+                real_name = json_f.split('/')[-1]
+                print(real_name)
+                a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
+            print(a_lst)
+            pool = Pool(args.n_cpus)
+            for d in pool.imap(_format_to_bert, a_lst):
+                pass
+
+            pool.close()
+            pool.join()
+
+def _format_to_bert(params):
+    corpus_type, json_file, args, save_file = params
+    is_test = corpus_type == 'test'
+    if (os.path.exists(save_file)):
+        logger.info('Ignore %s' % save_file)
+        return
+
+    bert = BertData(args)
+
+    logger.info('Processing %s' % json_file)
+    jobs = json.load(open(json_file))
+    datasets = []
+    for d in jobs:
+        source, tgt = d['src'], d['tgt']
+
+        sent_labels = greedy_selection(source[:args.max_src_nsents], tgt, 3)
+        if (args.lower):
+            source = [' '.join(s).lower().split() for s in source]
+            tgt = [' '.join(s).lower().split() for s in tgt]
+        b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer, is_test=is_test)
+        # b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer)
+
+        if (b_data is None):
+            continue
+        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt = b_data
+        b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
+                       "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
+                       'src_txt': src_txt, "tgt_txt": tgt_txt}
+        datasets.append(b_data_dict)
+    logger.info('Processed instances %d' % len(datasets))
+    logger.info('Saving to %s' % save_file)
+    torch.save(datasets, save_file)
+    datasets = []
+    gc.collect()
 
 def format_xsum_to_lines(args):
     if (args.dataset != ''):
