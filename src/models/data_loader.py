@@ -297,7 +297,7 @@ class DataIterator(object):
 
 def load_text(args, source_fp, target_fp, device):
     from others.tokenization import BertTokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+    tokenizer = BertTokenizer.from_pretrained('../models/rubert_cased_v2', do_lower_case=True)
     sep_vid = tokenizer.vocab['[SEP]']
     cls_vid = tokenizer.vocab['[CLS]']
     n_lines = len(open(source_fp).read().split('\n'))

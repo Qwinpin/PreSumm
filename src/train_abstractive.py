@@ -353,8 +353,8 @@ def test_text_abs(args):
 
     test_iter = data_loader.load_text(args, args.text_src, args.text_tgt, device)
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True, cache_dir=args.temp_dir)
-    symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
-               'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
+    tokenizer = BertTokenizer.from_pretrained('../models/rubert_cased_v2', do_lower_case=True, cache_dir=args.temp_dir)
+    symbols = {'BOS': tokenizer.vocab['[unused1]'], 'EOS': tokenizer.vocab['[unused2]'],
+               'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused3]']}
     predictor = build_predictor(args, tokenizer, symbols, model, logger)
     predictor.translate(test_iter, -1)
